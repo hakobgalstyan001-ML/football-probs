@@ -1,0 +1,749 @@
+{
+  "name": "The 2026 EV Revolution – Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 11
+            },
+            {
+              "triggerAtHour": 14
+            },
+            {
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      },
+      "id": "21600917-8a49-473d-ab9d-8e584d81049a",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -896,
+        -48
+      ],
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "url": "https://insideevs.com/rss/articles/all/",
+        "options": {}
+      },
+      "id": "3d036620-db5d-47ee-a3d1-57fc307ac2b9",
+      "name": "RSS Read",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        -608
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e8fc7f6b-1375-4e59-98a7-cb0e8c53edec",
+      "name": "Limit: Top 1",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        512,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst raw = input.output ?? input.text ?? input.content ?? '';\n\nif (!raw) {\n  return [{ json: { raw_text: '' } }];\n}\n\nconst cleaned = raw.replace(/```json/gi, '').replace(/```/gi, '').trim();\n\nlet result = cleaned;\nif (cleaned.length > 1024) {\n  const cut = cleaned.slice(0, 980);\n  const lastDot = Math.max(\n    cut.lastIndexOf('. '),\n    cut.lastIndexOf('.\\n'),\n    cut.lastIndexOf('!\\n'),\n    cut.lastIndexOf('?\\n')\n  );\n  result = lastDot > 0 ? cleaned.slice(0, lastDot + 1) : cut;\n}\n\nreturn [{ json: { raw_text: result } }];"
+      },
+      "id": "b11bc26b-0d9b-4ff8-99f2-a8b245cdceef",
+      "name": "Parse Agent JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "@the_ev_revolution",
+        "file": "={{ $('Prepare Search Query').first().json.image }}",
+        "replyMarkup": "=none",
+        "forceReply": {},
+        "replyKeyboardOptions": {},
+        "replyKeyboardRemove": {},
+        "additionalFields": {
+          "caption": "={{ $('Parse Agent JSON').first().json.raw_text }}",
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "e40290de-5b63-4a4d-bcb9-7ded633104b2",
+      "name": "Telegram: Send Photo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1792,
+        -80
+      ],
+      "webhookId": "e264cb2a-49c1-4eb5-a2ae-db4ac0adbeef",
+      "credentials": {
+        "telegramApi": {
+          "id": "npFQYbnVDJVBv1QU",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst sorted = items\n  .filter(i => (i.json.isoDate || i.json.pubDate) && i.json.enclosure?.url)\n  .sort((a, b) => {\n    const dateA = new Date(a.json.isoDate ?? a.json.pubDate).getTime();\n    const dateB = new Date(b.json.isoDate ?? b.json.pubDate).getTime();\n    return dateB - dateA;\n  });\n\n// Уникальный hash из execution ID\nconst execId = $execution.id ?? String(Date.now());\nconst hash = execId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);\nconst index = hash % Math.min(sorted.length, 50);\n\nconst item = (sorted[index] ?? sorted[0]).json;\n\nconst hour = new Date().getHours();\nconst angle = \n  hour < 10 ? 'обзор главных новостей электромобильного рынка' :\n  hour < 14 ? 'глубокий технический разбор — характеристики, батарея, запас хода' :\n  hour < 18 ? 'анализ рынка — цены, продажи, тренды' :\n  'инфраструктура зарядки — сети, скорость, доступность';\n\nconst title = (item.title ?? '').replace(/[^\\w\\s]/gi, '').trim().slice(0, 60);\n\n\n\nreturn [{\n  json: {\n    query: title ? `${title} 2025` : 'electric vehicle news 2025',\n    title: item.title ?? '',\n    link: item.link ?? item.guid ?? '',\n    pubDate: item.pubDate ?? item.isoDate,\n    image: item.enclosure?.url ?? '',\n    content: item.content ?? item.contentSnippet ?? '',\n    angle: angle,\n    index\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -64
+      ],
+      "id": "04e32906-1135-4379-b847-03f145654e87",
+      "name": "Prepare Search Query"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.image }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $node[\"Prepare Search Query\"].json.query }}"
+            },
+            {
+              "name": "tbm",
+              "value": "isch"
+            },
+            {
+              "name": "api_key",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1056,
+        96
+      ],
+      "id": "9ee5d6fd-6e52-4d02-beba-054ed843d5a6",
+      "name": "Google Image Search"
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1600,
+        -80
+      ],
+      "id": "d3993dde-7cc5-4c67-9f56-ee426d2f011a",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "numberInputs": 10
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -80,
+        -144
+      ],
+      "id": "d31378d6-2344-4d07-98ad-63b00391a3d2",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "url": "https://electrek.co/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        -464
+      ],
+      "id": "eb999552-e8dd-407f-b78b-07c9a21c80a6",
+      "name": "RSS Read1"
+    },
+    {
+      "parameters": {
+        "url": "https://www.caranddriver.com/rss/all.xml/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        -336
+      ],
+      "id": "2535cf82-fc1d-4d58-98d1-fe635c1c2ef6",
+      "name": "RSS Read2"
+    },
+    {
+      "parameters": {
+        "url": "https://cleantechnica.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        -208
+      ],
+      "id": "31e4f9a6-0229-4287-9cc0-ab949b216273",
+      "name": "RSS Read3"
+    },
+    {
+      "parameters": {
+        "url": "https://www.caranddriver.com/rss/all.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        -80
+      ],
+      "id": "343df2a9-f140-4da5-aa96-8837ce254177",
+      "name": "RSS Read4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Напиши краткий обобщающий пост для Telegram-канала «EV Revolution» строго по формату ниже.\n\nЗадача: {{ $('Prepare Search Query').first().json.angle }}\n\nСтатья:\nЗаголовок: {{ $('Prepare Search Query').first().json.title }}\nСсылка: {{ $('Prepare Search Query').first().json.link }}\nСодержание: {{ $('Prepare Search Query').first().json.content }}\n\nСТРОГИЙ ФОРМАТ (не отклоняйся от структуры, включай ВСЕ 5 частей без исключения):\n\n*Заголовок жирным*\n\n*🔍 Суть новости*\n1-2 коротких абзаца — только главная мысль, без перечисления частных случаев/моделей/вариантов.\n\n*⚡️ Технические детали*\n3-5 коротких пунктов списком (тире), каждый пункт — ПОЛНОЕ законченное предложение или словосочетание, без обрывов и сокращений.\n\n*📊 Значимость*\n1 короткий абзац — общий вывод для рынка, без цифр и деталей.\n\n*🏁 Итог*\n1 короткое предложение.\n\n🔗 [Читать полностью]({{ $('Prepare Search Query').first().json.link }})\n\nКРИТИЧЕСКИ ВАЖНО ПРО ССЫЛКУ:\n- Последняя строка поста ВСЕГДА обязана быть строкой со ссылкой: 🔗 [Читать полностью]({{ $('Prepare Search Query').first().json.link }})\n- Никогда не завершай пост без этой строки — даже если общая длина поста получается больше или меньше целевой, ссылка ВСЕГДА должна присутствовать в конце.\n- Не сокращай и не обрывай URL — вставляй его полностью, как дано выше.\n\nПРАВИЛА ДЛИНЫ:\n- Общая длина поста — 700-1000 символов, включая эмодзи, markdown-разметку и ссылку в конце.\n- Обобщай, а не перечисляй — если в статье упомянуто несколько моделей/случаев/цифр, выбери только самое важное и опиши общей мыслью.\n- Каждый пункт и каждое предложение должны быть закончены полностью — никаких обрывов на полуслове, никаких сокращённых/усечённых слов (например \"Vol\" вместо \"Volvo\").\n\nПРАВИЛА СТИЛЯ:\n- Только факты из статьи, никакой воды и домыслов.\n- Язык: русский, профессиональный, лаконичный стиль.\n- Markdown: *жирный* — используй только его.\n- Каждый раздел отделяй пустой строкой.\n- Никаких вводных фраз, никакого дублирования заголовка в тексте раздела.",
+        "options": {
+          "systemMessage": "Ты — главный редактор Telegram-канала «EV Revolution» с 10-летним опытом в автомобильной журналистике. Твоя специализация — электромобили, батарейные технологии и будущее транспорта.\n\nПиши экспертные посты исключительно на русском языке. Используй только факты из предоставленных данных — никаких домыслов, никакой воды, никаких вводных фраз типа «в этой статье» или «согласно источнику».\n\nСтиль: умный, динамичный, лаконичный. Читатель должен почувствовать себя инсайдером индустрии после прочтения каждого поста.\n\nКРИТИЧЕСКИ ВАЖНО: в ответе выводи ТОЛЬКО готовый текст поста на русском языке. Никаких раздумий, пояснений, преамбул, служебных тегов или комментариев о процессе написания — только финальный результат."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        928,
+        -352
+      ],
+      "id": "ab43277d-5e92-478b-bfaf-bc298b206acf",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data ?? '';\nconst rssItem = $('Limit: Top 1').first().json;\n\nconst text = html\n  .replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '')\n  .replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .slice(0, 3000);\n\n\n\nreturn [{\n  json: {\n    title: rssItem.title,\n    link: rssItem.link,\n    image: rssItem.enclosure?.url ?? '',\n    content: text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        -272
+      ],
+      "id": "81e5d705-c53c-4ed4-a010-26aa6e39e8de",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=⏳ Через 5 минут выйдет пост:  {{ $('Prepare Search Query').first().json.title }}  📎 Источник: {{ $('Prepare Search Query').first().json.link }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1456,
+        -320
+      ],
+      "id": "12b9dba2-b601-4500-9336-73ab5a6e661f",
+      "name": "Telegram Preview",
+      "webhookId": "4262479a-17d5-452c-86c0-fe31b189eff1",
+      "credentials": {
+        "telegramApi": {
+          "id": "npFQYbnVDJVBv1QU",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.motor1.com/rss/news/all/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        64
+      ],
+      "id": "5b421862-5b82-4924-9705-28cfc2efd7b9",
+      "name": "RSS Read5"
+    },
+    {
+      "parameters": {
+        "url": "https://chargedevs.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        208
+      ],
+      "id": "95aacd15-1780-4455-a4a3-d1c8d5a87b4c",
+      "name": "RSS Read6"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        352
+      ],
+      "id": "89a6a4c9-8e98-4cba-be12-b7e40118d5c3",
+      "name": "RSS Read7"
+    },
+    {
+      "parameters": {
+        "url": "https://www.cnet.com/rss/roadshow/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        496
+      ],
+      "id": "83627b44-60ec-45b4-a643-823e57dc5055",
+      "name": "RSS Read8"
+    },
+    {
+      "parameters": {
+        "url": "https://cleantechnica.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        640
+      ],
+      "id": "3e7f5e08-699d-4fe0-b8f5-fb5594774482",
+      "name": "RSS Read9"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=session_{{ $now.ts }}",
+        "contextWindowLength": "={{ 10000000000 }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1024,
+        -112
+      ],
+      "id": "a8f64eac-7185-4982-891b-65c614aca80a",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "pubDate",
+              "order": "descending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        352,
+        -64
+      ],
+      "id": "b3a21425-fb25-4810-84da-abc97243ae7b",
+      "name": "Sort"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "openai/gpt-oss-20b"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        896,
+        -144
+      ],
+      "id": "b9489de1-4a01-4963-8d2e-b8370c89a435",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "eGnKGAHnqZBnD5Ro",
+          "name": "OpenAI account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Schedule Trigger": [
+      {
+        "json": {
+          "timestamp": "2026-04-10T08:28:38.609-04:00",
+          "Readable date": "April 10th 2026, 8:28:38 am",
+          "Readable time": "8:28:38 am",
+          "Day of week": "Friday",
+          "Year": "2026",
+          "Month": "April",
+          "Day of month": "10",
+          "Hour": "08",
+          "Minute": "28",
+          "Second": "38",
+          "Timezone": "Asia/Yerevan (UTC+04:00)"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read4",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read5",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read6",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read7",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read8",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit: Top 1": {
+      "main": [
+        [
+          {
+            "node": "Google Image Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent JSON": {
+      "main": [
+        [
+          {
+            "node": "Telegram Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search Query": {
+      "main": [
+        [
+          {
+            "node": "Sort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Image Search": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Send Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read1": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "RSS Read2": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "RSS Read3": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "RSS Read4": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Preview": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read5": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "RSS Read6": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "RSS Read7": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 7
+          }
+        ]
+      ]
+    },
+    "RSS Read8": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 8
+          }
+        ]
+      ]
+    },
+    "RSS Read9": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 9
+          }
+        ]
+      ]
+    },
+    "Telegram: Send Photo": {
+      "main": [
+        []
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort": {
+      "main": [
+        [
+          {
+            "node": "Limit: Top 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6586b88a-3742-4ddf-b9aa-97705ca992db",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f3b1558a801d53f49f19b7296ad84e4a3fa3526414bf483cc7173d559fd1f0cb"
+  },
+  "id": "Ke9LlK0yODfeZkc1",
+  "tags": []
+}
