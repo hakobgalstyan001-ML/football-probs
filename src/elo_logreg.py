@@ -33,21 +33,24 @@ SCORES = {"H": 1.0, "D": 0.5, "A": 0.0}
 N_BOOTSTRAP = 2000
 
 
-def add_elo_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add pre-match Elo difference (home minus away, divided by 400)."""
+def expected_home_score(home: float, away: float) -> float:
+    return 1.0 / (1.0 + 10.0 ** (-(home + HOME_ADVANTAGE - away) / 400.0))
+
+
+def add_elo_features(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Add pre-match Elo difference; also return the ratings after the last match."""
     ratings: dict[str, float] = {}
     diffs = np.empty(len(df), dtype=np.float64)
     for i, row in enumerate(df.itertuples(index=False)):
         home = ratings.get(row.HomeTeam, INITIAL_RATING)
         away = ratings.get(row.AwayTeam, INITIAL_RATING)
         diffs[i] = (home - away) / 400.0
-        expected = 1.0 / (1.0 + 10.0 ** (-(home + HOME_ADVANTAGE - away) / 400.0))
-        delta = K_FACTOR * (SCORES[row.FTR] - expected)
+        delta = K_FACTOR * (SCORES[row.FTR] - expected_home_score(home, away))
         ratings[row.HomeTeam] = home + delta
         ratings[row.AwayTeam] = away - delta
     out = df.copy()
     out["elo_diff"] = diffs
-    return out
+    return out, ratings
 
 
 def features(df: pd.DataFrame) -> FloatArray:
@@ -74,7 +77,7 @@ def main() -> None:
     seasons = [*TRAIN_SEASONS, TEST_SEASON, LIVE_SEASON]
     data = pd.concat([load_season(s) for s in seasons], ignore_index=True)
     data = data.sort_values("Date", kind="stable").reset_index(drop=True)
-    data = add_elo_features(data)
+    data, _ = add_elo_features(data)
 
     fit_df = data[data["season"].isin(TRAIN_SEASONS[1:])]
     freq_df = data[data["season"].isin(TRAIN_SEASONS)]
