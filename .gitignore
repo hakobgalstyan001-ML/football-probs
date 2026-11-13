@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 .DS_Store
 n8n_data/
+data/fixtures.csv
