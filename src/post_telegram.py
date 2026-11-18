@@ -1,93 +1,117 @@
-"""Send logged upcoming Ligue 1 predictions to a Telegram channel.
+"""Format logged Ligue 1 predictions with Market Edge and post to Telegram.
 
 Run from the repository root:
     python src/post_telegram.py
 """
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from pathlib import Path
+import urllib.parse
+import urllib.request
+import json
 
 import pandas as pd
 
+LOG_PATH = Path("predictions_log.csv")
+POSTED_CACHE_PATH = Path("data/posted_matches.txt")
+MATCH_PAGE_URL = "https://www.football-data.co.uk/francem.php"
 
-def load_dotenv(path: Path = Path(".env")) -> None:
-    if not path.is_file():
+
+def load_env(path: str = ".env") -> None:
+    env_file = Path(path)
+    if not env_file.exists():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in env_file.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        key, val = line.split("=", 1)
+        os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
 
 
-def send_telegram_message(token: str, chat_id: str, text: str) -> dict:
+def send_telegram_message(token: str, chat_id: str, text: str) -> None:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = json.dumps({
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=payload, headers={"Content-Type": "application/json"}, method="POST"
-    )
+    payload = urllib.parse.urlencode(
+        {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST")
     with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        body = json.loads(resp.read().decode("utf-8"))
+        if not body.get("ok"):
+            raise RuntimeError(f"Telegram API error: {body}")
 
 
-def format_post(df: pd.DataFrame) -> str:
-    lines = ["⚽️ <b>Ligue 1 — Match Outcome Probabilities (Elo + LogReg)</b>\n"]
-    for row in df.itertuples(index=False):
-        p_h = round(float(row.p_home) * 100, 1)
-        p_d = round(float(row.p_draw) * 100, 1)
-        p_a = round(float(row.p_away) * 100, 1)
-        lines.append(
-            f"📅 <b>{row.match_date} {row.kickoff_uk} UK</b>\n"
-            f"🏟 <b>{row.home} vs {row.away}</b>\n"
-            f"📊 Model:  1: <b>{p_h}%</b> | X: <b>{p_d}%</b> | 2: <b>{p_a}%</b>"
-        )
-        if pd.notna(row.m_home):
-            m_h = round(float(row.m_home) * 100, 1)
-            m_d = round(float(row.m_draw) * 100, 1)
-            m_a = round(float(row.m_away) * 100, 1)
-            lines.append(f"🏦 Market: 1: {m_h}% | X: {m_d}% | 2: {m_a}%")
-        lines.append("")
-    lines.append("🔗 Data: football-data.co.uk/francem.php")
-    return "\n".join(lines).strip()
+def format_match_block(row: pd.Series) -> str:
+    p_h, p_d, p_a = float(row["p_home"]), float(row["p_draw"]), float(row["p_away"])
+    m_h = float(row.get("mkt_home", p_h))
+    m_d = float(row.get("mkt_draw", p_d))
+    m_a = float(row.get("mkt_away", p_a))
+
+    edges = {
+        f"П1 ({row['home_team']})": (p_h - m_h, p_h, m_h),
+        "Х (Ничья)": (p_d - m_d, p_d, m_d),
+        f"П2 ({row['away_team']})": (p_a - m_a, p_a, m_a),
+    }
+    best_label, (best_edge, mod_p, mkt_p) = max(edges.items(), key=lambda x: x[1][0])
+    badge = "🔥 VALUE" if best_edge >= 0.03 else "📊 Модель vs Рынок"
+
+    return (
+        f"⚽ <b>{row['home_team']} — {row['away_team']}</b>\n"
+        f"🕒 {row['kickoff_uk']} (UK)\n"
+        f"• Модель: П1 <b>{p_h:.1%}</b> | Х <b>{p_d:.1%}</b> | П2 <b>{p_a:.1%}</b>\n"
+        f"• Рынок:  П1 {m_h:.1%} | Х {m_d:.1%} | П2 {m_a:.1%}\n"
+        f"{badge}: <b>{best_label}</b> ({best_edge:+.1%})\n"
+        f"🔗 <a href=\"{MATCH_PAGE_URL}\">Матч-центр и статистика лиги</a>"
+    )
 
 
 def main() -> None:
-    load_dotenv()
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
+    load_env()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
-        raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID in .env")
+        raise SystemExit("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in .env")
 
-    log_path = Path("predictions_log.csv")
-    if not log_path.is_file():
-        raise FileNotFoundError("predictions_log.csv not found. Run predict_fixtures.py first.")
-
-    df = pd.read_csv(log_path)
-    pending = df[df["result"].isna() | (df["result"].astype(str).str.strip() == "")]
-    if pending.empty:
-        print("No pending predictions to publish.")
+    if not LOG_PATH.exists():
+        print("No predictions_log.csv found yet. Nothing to post.")
         return
 
-    text = format_post(pending)
-    print("Sending Telegram post:\n" + "-" * 40)
-    print(text)
-    print("-" * 40)
+    df = pd.read_csv(LOG_PATH)
+    pending = df[df["result"].isna() | (df["result"].astype(str).str.strip() == "")].copy()
+    if pending.empty:
+        print("No pending fixtures to post.")
+        return
 
-    try:
-        res = send_telegram_message(token, chat_id, text)
-        print("Sent successfully! Message ID:", res["result"]["message_id"])
-    except urllib.error.HTTPError as e:
-        print("Telegram API error:", e.code, e.read().decode("utf-8", errors="replace"))
+    posted_ids: set[str] = set()
+    if POSTED_CACHE_PATH.exists():
+        posted_ids = set(POSTED_CACHE_PATH.read_text(encoding="utf-8").splitlines())
+
+    new_rows = []
+    for _, row in pending.iterrows():
+        match_key = f"{row['kickoff_uk']}|{row['home_team']}|{row['away_team']}"
+        if match_key not in posted_ids:
+            new_rows.append((match_key, row))
+
+    if not new_rows:
+        print("All pending fixtures were already posted to Telegram.")
+        return
+
+    header = "🇫🇷 <b>Ligue 1 — Вероятности исходов</b>\n\n"
+    blocks = [format_match_block(r) for _, r in new_rows]
+    message = header + "\n\n".join(blocks)
+
+    send_telegram_message(token, chat_id, message)
+    POSTED_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with POSTED_CACHE_PATH.open("a", encoding="utf-8") as f:
+        for match_key, _ in new_rows:
+            f.write(match_key + "\n")
+    print(f"Posted {len(new_rows)} match(es) to Telegram channel.")
 
 
 if __name__ == "__main__":

@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 n8n_data/
 data/fixtures.csv
+data/posted_matches.txt
