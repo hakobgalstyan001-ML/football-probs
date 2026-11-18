@@ -53,7 +53,7 @@ def main() -> None:
         print("No predictions_log.csv found yet. Nothing to post.")
         return
     df = pd.read_csv(LOG_PATH)
-    unplayed = df[df.iloc[:, 11].astype(str).str.lower().isin(["false", "0", "", "nan", "none"])]
+    unplayed = df[df.iloc[:, -1].astype(str).str.lower().isin(["false", "0", "", "nan", "none"])]
     if unplayed.empty:
         print("No pending fixtures to post.")
         return
