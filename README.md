@@ -6,22 +6,8 @@ Calibrated 1X2 (Home / Draw / Away) probability model for French Ligue 1 (`footb
 
 1. **Clone & install dependencies:**
    ```bash
-   git clone https://github.com/hakobgalstyan001-ML/football-probs.git
+   git clone [https://github.com/hakobgalstyan001-ML/football-probs.git](https://github.com/hakobgalstyan001-ML/football-probs.git)
    cd football-probs
    python -m venv .venv
    source .venv/bin/activate  # Windows Git Bash: source .venv/Scripts/activate
-   pip install -r requirements.txt
-   ```
-
-2. **Configure environment variables (optional, only for Telegram posting):**
-   ```bash
-   cp .env.example .env
-   # Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID to .env
-   ```
-
-3. **Run data update, baseline evaluation, and fixture prediction:**
-   ```bash
-   python src/update_data.py
-   python src/elo_logreg.py
-   python src/predict_fixtures.py --fixtures data/fixtures.csv
-   ```h(Ð¸€¨©A½ÍÐÁ•¹‘¥¹œÁÉ•‘¥Ñ¥½¹ÌÑ¼Q•±•É…´è¨¨(€€‰…Í (€€ÁåÑ¡½¸ÍÉŒ½Á½ÍÑ}Ñ•±•É…´¹Áä(€€€((ŒŒI•ÍÕ±ÑÌQ…‰±”€¡5•ÑÉ¥Œè5Õ±Ñ¤µ±…ÍÌ1½œ1½ÍÌ¤()±°µ½‘•±Ì…É”•Ù…±Õ…Ñ•ÍÑÉ¥Ñ±ä½ÕÐµ½˜µÍ…µÁ±”ÕÍ¥¹œ•áÁ…¹‘¥¹œµÝ¥¹‘½ÜÑÉ…¥¹¥¹œÝ¥Ñ é•É¼™ÕÑÕÉ”±•…­…”¸()ð5½‘•°ð•ÍÉ¥ÁÑ¥½¸ð1½œ1½ÍÌ€ ÈÀÈÔ´ÈØ¤ð1½œ1½ÍÌ€ ÈÀÈØ´ÈÜeQ¤ð9½Ñ•Ìð)ð€è´´´ð€è´´´ð€è´´´èð€è´´´èð€è´´´ð)ð€¨©	…Í•±¥¹”€¡±¼€¬1½I•€¤¨¨ðå¹…µ¥Œ±¼É…Ñ¥¹Ì€¬5Õ±Ñ¥¹½µ¥…°1½¥ÍÑ¥ŒI•É•ÍÍ¥½¸ð€¨¨Ä¸ÀÀÐÔ¨¨ð€¨¨Ä¸ÀÔÄÀ€¼€À¸äÜÈÀ¨¨ð	•ÍÐ…±¥‰É…Ñ¥½¸ì±½Ý•ÍÐÙ…É¥…¹”ð)ð€¨©áÁ•É¥µ•¹ÐØÈ€¡µ½‘•±}ØÈ¹Áå€¤¨¨ð±¼€¬€Ôµµ…Ñ É½±±¥¹œ½…±Ì½Í¡½ÑÌ™½É´ð€Ä¸ÀÄÄÈð€À¸äàÀÐð=Ù•É™¥ÑÌÍ¡½ÉÐµÑ•É´¹½¥Í”ð)ð€¨©áÁ•É¥µ•¹ÐØÌ€¡µ½‘•±}ØÌ¹Áå€¤¨¨ðÉ…‘¥•¹Ð	½½ÍÑ¥¹œ½¸±¼€¬™½É´ð€Ä¸ÀÄàäð€À¸äàäÄð]½ÉÍ”…±¥‰É…Ñ¥½¸Ñ¡…¸1½I•œð((ŒŒ…¥±ÕÉ”…Í”¹…±åÍ¥Ì€¡]¡•É”Ñ¡”5½‘•°…¥±Ì¤((´€¨©…É±äµÍ•…Í½¸€˜¹•Ý±äÁÉ½µ½Ñ•Ñ•…µÌè¨¨9•Ý±äÁÉ½µ½Ñ•±Õ‰ÌÍÑ…ÉÐÝ¥Ñ „‘•™…Õ±ÐÁÉ¥½È±¼É…Ñ¥¹œ…¹¹¼É••¹ÐÑ½Àµ™±¥¡Ð¡¥ÍÑ½Éä¸(´€¨©MÅÕ…É½Ñ…Ñ¥½¸€˜¥¹©ÕÉ¥•Ì‰•™½É”ÕÉ½Á•…¸™¥áÑÕÉ•Ìè¨¨MÕ‘‘•¸±¥¹•ÕÀÉ½Ñ…Ñ¥½¹Ì…É”¹½Ð…ÁÑÕÉ•Õ¹Ñ¥°±½Í¥¹œ½‘‘Ìµ½Ù”¸((ŒŒM½Á”€˜9½¸µ½…±Ì€¡]¡…Ð]”É”9½Ð½¥¹œ¤((´]”…É”€¨©¹½Ð¨¨‰Õ¥±‘¥¹œ…¸…ÕÑ½µ…Ñ•‰•ÑÑ¥¹œ‰½Ð½È±…¥µ¥¹œÑ¼‰•…Ð‰½½­µ…­•Èµ…É¥¹Ì±½¹œµÑ•É´¸(´Q¡”½…°¥Ì€¨©…±¥‰É…Ñ•ÁÉ½‰…‰¥±¥Ñä•ÍÑ¥µ…Ñ¥½¸¨¨…¹ÑÉ…¹ÍÁ…É•¹Ð€¨©5…É­•Ð‘”¨¨¡¥¡±¥¡Ñ¥¹œ€¡5½‘•°ÙÌ5…É­•Ñ€¤¸(
+   pip install -r requirements.txt  
