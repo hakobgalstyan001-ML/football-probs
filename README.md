@@ -1,13 +1,25 @@
-# Ligue 1 Match Outcome Probabilities
+# Ligue 1 Match Outcome Probabilities & Market Edge Pipeline
 
-Calibrated 1X2 (Home / Draw / Away) probability model for French Ligue 1 (`football-data.co.uk`, seasons `2020-21` to `2026-27`) with automated Market Edge comparison and Telegram channel publishing.
+A reproducible, end-to-end machine learning pipeline that estimates calibrated 1X2 (Home / Draw / Away) outcome probabilities for French Ligue 1 (`Div = F1`), compares model predictions against bookmaker implied probabilities (`Market Edge`), and publishes automated match previews to a Telegram channel.
 
-## Quickstart (Reproducible Pipeline)
+- **Data Source:** [football-data.co.uk](https://www.football-data.co.uk/francem.php) (seasons `2020-21` through `2026-27`)
+- **Core Stack:** Python 3, `pandas`, `numpy`, `scikit-learn`, `scipy`, Telegram Bot API
 
-1. **Clone & install dependencies:**
-   ```bash
-   git clone [https://github.com/hakobgalstyan001-ML/football-probs.git](https://github.com/hakobgalstyan001-ML/football-probs.git)
-   cd football-probs
-   python -m venv .venv
-   source .venv/bin/activate  # Windows Git Bash: source .venv/Scripts/activate
-   pip install -r requirements.txt  
+---
+
+## 1. Architecture & Leakage Prevention
+
+```text
+football-data.co.uk (CSV)
+        │
+        ▼
+[src/update_data.py] ──► data/raw/ligue1_*.csv & data/fixtures.csv
+        │
+        ▼
+[src/elo_logreg.py]  ──► Sequential Elo ratings + Multinomial Logistic Regression
+        │
+        ▼
+[src/predict_fixtures.py] ──► Out-of-sample 1X2 probabilities + Market Edge ─► predictions_log.csv
+        │
+        ▼
+[src/post_telegram.py] ──► Deduplicated HTML match cards ─► Telegram Channel  
