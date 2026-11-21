@@ -1,25 +1,19 @@
-# Ligue 1 Match Outcome Probabilities & Market Edge Pipeline
+## Experiment Results (Ligue 1, 2021-22 – 2026-27)
 
-A reproducible, end-to-end machine learning pipeline that estimates calibrated 1X2 (Home / Draw / Away) outcome probabilities for French Ligue 1 (`Div = F1`), compares model predictions against bookmaker implied probabilities (`Market Edge`), and publishes automated match previews to a Telegram channel.
+All models are evaluated strictly chronologically (no future leakage) on the exact same train/test split using **Multiclass Log Loss** (lower is better):
 
-- **Data Source:** [football-data.co.uk](https://www.football-data.co.uk/francem.php) (seasons `2020-21` through `2026-27`)
-- **Core Stack:** Python 3, `pandas`, `numpy`, `scikit-learn`, `scipy`, Telegram Bot API
+| Model | Features | Train Matches | Test Matches | Test Log Loss |
+| :--- | :--- | :---: | :---: | :---: |
+| Naive Baseline (Class Priors) | Historical H/D/A frequencies | 1414 | 354 | **1.0740** |
+| **Baseline: Elo + Logistic Regression** | `elo_diff`, `elo_home`, `elo_away` | 1414 | 354 | **1.0054** |
+| Experiment: Elo + Form + Gradient Boosting | Elo + 5-match rolling goals & shots on target | 1414 | 354 | **1.0129** |
 
----
+**Takeaway & Feature Freeze:** Adding rolling goal/shot features and Gradient Boosting did not beat the `Elo + Logistic Regression` baseline due to high match-to-match variance in Ligue 1. We keep `Elo + Logistic Regression` as the production model and freeze new feature additions after Week 3.
 
-## 1. Architecture & Leakage Prevention
+## Reproducibility & Explainability (SHAP & LIME)
 
-```text
-football-data.co.uk (CSV)
-        │
-        ▼
-[src/update_data.py] ──► data/raw/ligue1_*.csv & data/fixtures.csv
-        │
-        ▼
-[src/elo_logreg.py]  ──► Sequential Elo ratings + Multinomial Logistic Regression
-        │
-        ▼
-[src/predict_fixtures.py] ──► Out-of-sample 1X2 probabilities + Market Edge ─► predictions_log.csv
-        │
-        ▼
-[src/post_telegram.py] ──► Deduplicated HTML match cards ─► Telegram Channel  
+Run the full evaluation and generate global `SHAP` and local `LIME` error-analysis plots in `reports/`:
+
+```bash
+pip install -r requirements.txt
+python src/evaluate_and_explain.py

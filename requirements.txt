@@ -9,3 +9,6 @@ scipy==1.18.1
 threadpoolctl==3.8.0
 tzdata==2026.6
 Pillow>=10.0.0
+lime
+matplotlib
+shap
