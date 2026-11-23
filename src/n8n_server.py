@@ -1,4 +1,4 @@
-"""Docker-friendly HTTP bridge connecting n8n triggers to the Ligue 1 ML & Pillow pipeline."""
+"""Docker-friendly multi-threaded HTTP bridge connecting n8n triggers to the Ligue 1 pipeline."""
 from __future__ import annotations
 
 import json
@@ -6,9 +6,12 @@ import os
 import re
 import subprocess
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -22,10 +25,26 @@ from post_telegram import (
 
 ROOT = Path(__file__).resolve().parent.parent
 CARDS_DIR = ROOT / "data" / "cards"
+_CACHE_LOCK = threading.Lock()
+
+try:
+    UK_TZ = ZoneInfo("Europe/London")
+except Exception:
+    UK_TZ = timezone.utc
 
 
 def _safe_slug(text: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "_", text).strip("_")
+
+
+def _is_upcoming_match(match_date: str, kickoff_uk: str, now_utc: datetime) -> bool:
+    """Return True only if the scheduled kickoff in UK local time is strictly in the future."""
+    try:
+        dt_naive = datetime.strptime(f"{match_date.strip()} {kickoff_uk.strip()}", "%Y-%m-%d %H:%M")
+        dt_utc = dt_naive.replace(tzinfo=UK_TZ).astimezone(timezone.utc)
+        return dt_utc > now_utc
+    except ValueError:
+        return False
 
 
 def run_full_pipeline() -> dict:
@@ -50,16 +69,24 @@ def run_full_pipeline() -> dict:
     if unplayed.empty:
         return {"matches": []}
 
-    posted_ids = set(cache_file.read_text(encoding="utf-8").splitlines()) if cache_file.exists() else set()
+    with _CACHE_LOCK:
+        posted_ids = set(cache_file.read_text(encoding="utf-8").splitlines()) if cache_file.exists() else set()
+
     CARDS_DIR.mkdir(parents=True, exist_ok=True)
+    now_utc = datetime.now(timezone.utc)
 
     matches = []
     for _, r in unplayed.iterrows():
-        mk = f"{r['match_date']}|{r['kickoff_uk']}|{r['home']}|{r['away']}"
+        m_date = str(r["match_date"])
+        k_uk = str(r["kickoff_uk"])
+        if not _is_upcoming_match(m_date, k_uk, now_utc):
+            continue
+
+        mk = f"{m_date}|{k_uk}|{r['home']}|{r['away']}"
         if mk in posted_ids:
             continue
 
-        slug = _safe_slug(f"{r['match_date']}_{r['home']}_vs_{r['away']}")
+        slug = _safe_slug(f"{m_date}_{r['home']}_vs_{r['away']}")
         card_path = CARDS_DIR / f"{slug}.png"
         card_path.write_bytes(generate_match_card(r))
 
@@ -76,8 +103,8 @@ def run_full_pipeline() -> dict:
             {
                 "match_key": mk,
                 "chat_id": chat_id,
-                "match_date": str(r["match_date"]),
-                "kickoff_uk": str(r["kickoff_uk"]),
+                "match_date": m_date,
+                "kickoff_uk": k_uk,
                 "home": str(r["home"]),
                 "away": str(r["away"]),
                 "best_outcome": best_outcome,
@@ -94,10 +121,11 @@ def run_full_pipeline() -> dict:
 def mark_posted(match_key: str) -> dict:
     cache_file = ROOT / POSTED_CACHE_PATH
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    existing = set(cache_file.read_text(encoding="utf-8").splitlines()) if cache_file.exists() else set()
-    if match_key and match_key not in existing:
-        with cache_file.open("a", encoding="utf-8") as f:
-            f.write(match_key + "\n")
+    with _CACHE_LOCK:
+        existing = set(cache_file.read_text(encoding="utf-8").splitlines()) if cache_file.exists() else set()
+        if match_key and match_key not in existing:
+            with cache_file.open("a", encoding="utf-8") as f:
+                f.write(match_key + "\n")
     return {"marked": match_key}
 
 
@@ -138,6 +166,6 @@ class PipelineHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", 8787), PipelineHandler)
-    print("Ligue 1 Docker ML bridge ready on http://0.0.0.0:8787 ...")
+    server = ThreadingHTTPServer(("0.0.0.0", 8787), PipelineHandler)
+    print("Ligue 1 multi-threaded Docker ML bridge ready on http://0.0.0.0:8787 ...")
     server.serve_forever()

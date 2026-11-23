@@ -12,13 +12,17 @@ football-probs/
 │   ├── raw/                        # Historical Ligue 1 CSV files from football-data.co.uk
 │   └── posted_matches.txt          # Deduplication cache of already published fixtures
 ├── reports/
-│   ├── baselines_comparison.md     # Multi-tier baseline evaluation table
-│   └── baselines_comparison.png    # Visual comparison of Log Loss, RPS, and Accuracy
+│   ├── baselines_comparison.md     # Week 2 multi-tier baseline evaluation table
+│   ├── baselines_comparison.png    # Visual comparison of Log Loss, RPS, and Accuracy
+│   ├── results_table.md            # Week 3 model comparison + 1,000-sample paired bootstrap CIs
+│   ├── calibration_curve.png       # Multi-class probability calibration (reliability) diagram
+│   └── failure_analysis.md         # Qualitative analysis of top high-loss mispredictions
 ├── src/
 │   ├── baselines.py                # 4-tier chronological baseline benchmark & chart generator
+│   ├── experiments.py              # Week 3 feature experiments, bootstrap CIs & error analysis
 │   ├── predict_fixtures.py         # Upcoming fixture probability & market-edge inference
 │   ├── n8n_pipeline.py             # Card rendering & Telegram payload preparation
-│   └── n8n_server.py               # Local HTTP bridge consumed by the n8n workflow
+│   └── n8n_server.py               # Multi-threaded HTTP bridge consumed by the n8n workflow
 ├── .gitignore
 ├── requirements.txt
 └── README.md
