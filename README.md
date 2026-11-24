@@ -9,20 +9,22 @@ Probabilistic forecasting pipeline for French Ligue 1 (`F1`, seasons `2020-21` t
 ```text
 football-probs/
 ├── data/
-│   ├── raw/                        # Historical Ligue 1 CSV files from football-data.co.uk
-│   └── posted_matches.txt          # Deduplication cache of already published fixtures
+│   └── raw/                        # Historical Ligue 1 CSV files (2020-21 to 2026-27)
 ├── reports/
 │   ├── baselines_comparison.md     # Week 2 multi-tier baseline evaluation table
 │   ├── baselines_comparison.png    # Visual comparison of Log Loss, RPS, and Accuracy
 │   ├── results_table.md            # Week 3 model comparison + 1,000-sample paired bootstrap CIs
 │   ├── calibration_curve.png       # Multi-class probability calibration (reliability) diagram
-│   └── failure_analysis.md         # Qualitative analysis of top high-loss mispredictions
+│   ├── failure_analysis.md         # Qualitative analysis of top high-loss mispredictions
+│   └── writeup.md                  # One-page project summary (choices, results, lessons learned)
 ├── src/
 │   ├── baselines.py                # 4-tier chronological baseline benchmark & chart generator
 │   ├── experiments.py              # Week 3 feature experiments, bootstrap CIs & error analysis
+│   ├── update_data.py              # Automated downloader for latest Ligue 1 results & fixtures
 │   ├── predict_fixtures.py         # Upcoming fixture probability & market-edge inference
 │   ├── n8n_pipeline.py             # Card rendering & Telegram payload preparation
 │   └── n8n_server.py               # Multi-threaded HTTP bridge consumed by the n8n workflow
+├── .env.example                    # Template for Telegram bot credentials
 ├── .gitignore
 ├── requirements.txt
 └── README.md
@@ -32,11 +34,11 @@ football-probs/
 
 ## Quickstart & Reproducibility
 
-Follow these steps to reproduce the baseline benchmark locally from a clean clone:
+Follow these steps to reproduce all benchmarks and experiment tables locally from a clean clone:
 
 1. **Clone the repository and enter the project directory:**
    ```bash
-   git clone <your-repo-url>
+   git clone [https://github.com/hakobgalstyan001-ML/football-probs.git](https://github.com/hakobgalstyan001-ML/football-probs.git)
    cd football-probs
    ```
 
@@ -52,17 +54,22 @@ Follow these steps to reproduce the baseline benchmark locally from a clean clon
    pip install -r requirements.txt
    ```
 
-3. **Run the 4-tier chronological baseline benchmark:**
+3. **Run the Week 2 4-tier chronological baseline benchmark:**
    ```bash
    python src/baselines.py
    ```
-   This evaluates all four baseline tiers on an identical chronological hold-out split and writes:
-   - `reports/baselines_comparison.md`
-   - `reports/baselines_comparison.png`
+   Evaluates all four baseline tiers on an identical chronological hold-out split and writes `reports/baselines_comparison.md` and `reports/baselines_comparison.png`.
 
-4. **Start the local HTTP bridge for the `n8n` $\rightarrow$ Telegram workflow (optional):**
-   Configure your Telegram bot credentials in `.env` (excluded from Git via `.gitignore`) and run:
+4. **Run the Week 3 model experiments, paired bootstrap tests, and calibration plot:**
    ```bash
+   python src/experiments.py
+   ```
+   Evaluates candidate models against the baseline and writes `reports/results_table.md`, `reports/calibration_curve.png`, and `reports/failure_analysis.md`.
+
+5. **Start the local HTTP bridge for the `n8n` $\rightarrow$ Telegram workflow (optional):**
+   Copy `.env.example` to `.env`, fill in your Telegram bot credentials (excluded from Git via `.gitignore`), and run:
+   ```bash
+   cp .env.example .env
    python src/n8n_server.py
    ```
 
@@ -84,7 +91,7 @@ Historical match data for French Ligue 1 (`F1`, seasons `2020-21` through `2026-
 
 ## Multi-Tier Baseline Strategy (`src/baselines.py`)
 
-Rather than benchmarking against a single naive constant predictor, `src/baselines.py` evaluates a four-tier hierarchy of baselines on an identical chronological hold-out split (`1,718` training matches / `430` test matches covering `2025-04-26` to `2026-11-08`) using **Multi-class Log Loss**, **Ranked Probability Score (RPS)**, **Brier Score**, and **Accuracy**:
+`src/baselines.py` evaluates a four-tier hierarchy of baselines on an identical chronological hold-out split (`1,718` training matches / `430` test matches covering `2025-04-26` to `2026-11-08`) using **Multi-class Log Loss**, **Ranked Probability Score (RPS)**, **Brier Score**, and **Accuracy**:
 
 1. **Historical Class Prior (Sanity Check):** Empirical training-set class frequencies for `(H, D, A)` serving as a lower-bound sanity check.
 2. **Poisson Goal Model (Maher, 1982):** Regularized `PoissonRegressor` estimating home/away team attack and defense parameters to derive `1 / X / 2` outcome probabilities from a $0..9 \times 0..9$ scoreline probability grid.
@@ -104,11 +111,41 @@ Rather than benchmarking against a single naive constant predictor, `src/baselin
 
 ---
 
+## Week 3 Experiments, Calibration & Error Analysis (`src/experiments.py`)
+
+`src/experiments.py` evaluates three candidate models against the Week 2 baseline (`0.9985` Log Loss) on the identical `430`-match chronological split with **1,000-sample paired bootstrap confidence intervals**:
+
+- **`model_v2` (Elo + Promoted-Team Prior `1420` + 5-Match Rolling Form + LogReg):** Tests whether short-term rolling `HST/AST`, goal differentials, points, and rest days improve responsiveness over Elo alone.
+- **`model_v3` (`HistGradientBoostingClassifier` on Elo + Rolling Form):** Tests non-linear tree splits on the ~1,718-match training set.
+- **`model_v4` (Calibrated Blend of Elo+Form LogReg `0.794` + Time-Decayed Poisson `0.206`):** Combines sequential Elo/form probabilities with exponentially time-decayed goal expectations.
+
+### Experiment Comparison & Paired Bootstrap Significance (`N = 430` Matches)
+
+| Model | Log Loss | RPS | Brier Score | Accuracy | Delta Log Loss vs v1 (95% CI) | P(Beats Baseline) |
+| :--- | ---: | ---: | ---: | ---: | :--- | ---: |
+| Baseline (v1): Dynamic Elo + LogReg | 0.9985 | 0.2091 | 0.5957 | 0.5140 | 0.0000 (Reference) | — |
+| model_v2: Elo + Rolling Form + LogReg | 0.9994 | 0.2093 | 0.5964 | 0.5093 | +0.0009 [-0.0071, +0.0093] | 39.7% |
+| model_v3: HistGradientBoosting (Elo+Form) | 1.0186 | 0.2139 | 0.6084 | 0.5140 | +0.0201 [+0.0020, +0.0394] | 1.5% |
+| **model_v4: Calibrated Elo+Form+Poisson** | **0.9984** | **0.2089** | **0.5956** | 0.5070 | **-0.0000 [-0.0126, +0.0122]** | **47.0%** |
+| Market Reference (De-vigged Odds) | 0.9687 | 0.2004 | 0.5765 | 0.5419 | -0.0298 [-0.0464, -0.0114] | 100.0% |
+
+**Statistical & qualitative findings:** `model_v4` achieves the best ML scores across all proper scoring rules (`0.9984` Log Loss, `0.2089` RPS, `0.5956` Brier Score), though its 95% bootstrap CI (`[-0.0126, +0.0122]`) spans zero (`P(Beats Baseline) = 47.0%`), showing that sequential Elo already captures most historical match-level signal. `model_v3` overfits the sample (`+0.0201 [+0.0020, +0.0394]`). Qualitative error analysis (`reports/failure_analysis.md`) identifies late-season squad rotation (`2026-05-17 Paris FC 2–1 Paris SG`, `p_A = 0.632`) and high-favorite variance upsets (`2026-01-04 Marseille 0–2 Nantes`, `p_H = 0.695`) as the main drivers of the `0.0297` gap to closing odds.
+
+---
+
+## Scope Boundaries
+
+- **Feature Freeze (Post-Week 3):** No new features are added after Week 3; Week 4 focuses on Swap Test fixes, final write-up review, and Demo Day rehearsal.
+- **No Paid Lineup / Injury Feeds:** Relies exclusively on public match-level data (`football-data.co.uk`) and documents the `0.0297` Log Loss gap to closing odds as the information ceiling of tabular match logs.
+- **No Automated Betting Execution:** Publishes calibrated `1 / X / 2` probabilities and market-edge diagnostics rather than placing bets.
+
+---
+
 ## Automated `n8n` $\rightarrow$ Telegram Pipeline
 
-- **Inference & Edge Calculation:** `src/predict_fixtures.py` computes `1 / X / 2` probabilities using the calibrated baseline model and compares them against de-vigged pre-match odds.
-- **Card Rendering & Local API:** `src/n8n_server.py` and `src/n8n_pipeline.py` generate match probability PNG cards and expose local HTTP endpoints for `n8n`.
-- **Idempotent Delivery:** `n8n` processes fixtures sequentially (`Items per Batch = 1`) and records published match keys in `data/posted_matches.txt` to prevent duplicate posts across scheduled runs.
+- **Inference & Edge Calculation:** `src/predict_fixtures.py` computes `1 / X / 2` probabilities and compares them against de-vigged pre-match odds.
+- **Card Rendering & Local API:** `src/n8n_server.py` (multi-threaded `ThreadingHTTPServer`) and `src/n8n_pipeline.py` generate match probability PNG cards, filter out already-started fixtures (`kickoff_utc > now`), and expose local HTTP endpoints for `n8n`.
+- **Idempotent Delivery:** `n8n` processes fixtures sequentially and records published match keys in `data/posted_matches.txt` to prevent duplicate posts across scheduled runs.
 
 ---
 
