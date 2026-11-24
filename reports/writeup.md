@@ -1,0 +1,22 @@
+# One-Page Project Write-Up: Ligue 1 Match Outcome Probabilities & Automated Telegram Pipeline
+
+## 1. What We Chose and Why
+We built an end-to-end probabilistic forecasting and publishing pipeline for French Ligue 1 (`F1`, seasons `2020-21` through `2026-27`, `N = 2,148` matches) that estimates calibrated `1 / X / 2` (Home Win / Draw / Away Win) probabilities, compares them against de-vigged bookmaker odds (`Model - Market` edge), and delivers rendered PNG probability cards to Telegram via `n8n`.
+
+- **Why this problem & metric:** Raw classification accuracy rewards predicting favorites and ignores probability calibration. Following Constantinou & Fenton (2012), we evaluated all models on an identical chronological hold-out split (`1,718` train / `430` test matches covering `2025-04-26` to `2026-11-08`) using strictly proper scoring rules—**Multi-class Log Loss** (primary) and **Ranked Probability Score (RPS)**—benchmarked against both naive priors and the de-vigged bookmaker closing market (`0.9687` Log Loss).
+- **Why hybrid Python + `n8n` architecture:** Keeping data ingestion, leak-free Elo/Poisson/LogReg modeling, bootstrap evaluation, and Pillow PNG rendering in pure Python guarantees 100% reproducibility from a clean `git clone`, while `n8n` orchestrates scheduled triggers (`Fri/Sat`), conditional branching, binary image merging, and idempotent Telegram delivery.
+
+## 2. What Worked
+- **Dynamic Elo + Multinomial Logistic Regression (`0.9985` Log Loss, `0.2091` RPS):** Sequential Elo rating updates with home-advantage adjustment reduced hold-out Log Loss by `0.0644` nats over both the historical class prior (`1.0629`) and a static multi-season Poisson goal model (`1.0628`), closing ~68% of the gap between a naive baseline and the bookmaker market (`0.9687`).
+- **Calibrated Elo + Form + Time-Decayed Poisson Ensemble (`model_v4`, `0.9984` Log Loss, `0.2089` RPS):** Blending regularized Elo+Form logistic regression (`0.794`) with an exponentially time-decayed Poisson goal model (`0.206`) achieved our best overall scores across Log Loss (`0.9984`), RPS (`0.2089`), and Brier Score (`0.5956`).
+- **Multi-threaded HTTP Bridge & Deduplication:** Replacing single-threaded HTTP serving with `ThreadingHTTPServer`, enforcing strict `kickoff_utc > now` filtering, and persisting published keys in `data/posted_matches.txt` eliminated duplicate posts and concurrent request drops during `n8n` execution.
+
+## 3. What Did Not Work (and Why)
+- **Tree-Based Gradient Boosting (`model_v3`, `HistGradientBoostingClassifier`):** Degraded hold-out Log Loss to `1.0186` (`+0.0201` worse than baseline; 95% paired bootstrap CI `[+0.0020, +0.0394]`, `P(beats baseline) = 1.5%`). With ~1,718 noisy football matches, non-linear tree splits overfit historical variance and harmed probability calibration compared to L2-regularized logistic regression.
+- **5-Match Rolling Box-Score Features Alone (`model_v2`):** Adding rolling shots on target (`HST/AST`), goal differentials, points, and rest days yielded `0.9994` Log Loss (`Δ = +0.0009 [-0.0071, +0.0093]`). Even for `model_v4` (`0.9984`), the 1,000-sample paired bootstrap CI (`[-0.0126, +0.0122]`) spanned zero (`P(beats baseline) = 47.0%`), demonstrating that sequential Elo already absorbs most match-level performance signal.
+- **Closing the Final `0.0297` Log Loss Gap to Bookmakers:** Qualitative error analysis (`reports/failure_analysis.md`) on high-loss upsets (e.g., `2026-01-04 Marseille 0–2 Nantes`, `p_H = 0.695`; `2026-05-17 Paris FC 2–1 Paris SG`, `p_A = 0.632`) showed that public match logs cannot observe late-season squad rotation, injuries, or lineup news priced into closing bookmaker odds.
+
+## 4. What We Would Do Differently
+1. **Incorporate Pre-Match Lineup & Injury Availability Signals:** Rather than engineering more rolling statistics from past box scores, the highest-leverage data addition would be confirmed starting XI / key-player injury indicators 60 minutes before kickoff.
+2. **Adopt a Time-Decayed Bivariate Poisson / Dixon-Coles Framework Earlier:** Modeling low-score correlation (`0–0`, `1–0`, `0–1`, `1–1`) with exponential time decay directly as the primary goal model would unify Elo-style recency weighting with exact scoreline probabilities.
+3. **Host the Python Bridge Alongside `n8n` in a Single `docker-compose.yml`:** Bundling the ML API and `n8n` into one Compose stack from Day 1 would eliminate host-to-container networking setup (`host.docker.internal`) during peer Swap Tests.
